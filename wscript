@@ -87,6 +87,8 @@ def configure(conf):
                'pch', 'boost', 'dependency-checker', 'websocket',
                'doxygen', 'sphinx_build'])
 
+    conf.load('clang_compilation_database', tooldir=['.waf-tools'])
+
     conf.find_program('bash', var='BASH')
 
     if 'PKG_CONFIG_PATH' not in os.environ:
