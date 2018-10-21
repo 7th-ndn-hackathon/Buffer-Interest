@@ -97,7 +97,7 @@ void
 MulticastUdpTransport::doClose()
 {
   if (m_sendSocket.is_open()) {
-    NFD_LOG_FACE_TRACE("Closing sending socket");
+    NFD_LOG_WARN("MulticastUdpTransport::Closing sending socket");
 
     // Cancel all outstanding operations and close the socket.
     // Use the non-throwing variants and ignore errors, if any.
@@ -106,7 +106,16 @@ MulticastUdpTransport::doClose()
     m_sendSocket.close(error);
   }
 
-  DatagramTransport::doClose();
+  // DatagramTransport::doClose();
+  NFD_LOG_FACE_TRACE(__func__);
+
+  if (m_socket.is_open()) {
+    // Cancel all outstanding operations and close the socket.
+    // Use the non-throwing variants and ignore errors, if any.
+    boost::system::error_code error;
+    m_socket.cancel(error);
+    m_socket.close(error);
+  }
 }
 
 static void
