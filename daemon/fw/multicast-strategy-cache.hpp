@@ -59,6 +59,8 @@ private:
 
   void onFaceUp(const weak_ptr<pit::Entry>& weakPitEntry, Face& outFace);
 
+  void onNewFace(const weak_ptr<pit::Entry>& weakPitEntry, Face& outFace);
+
 PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   static const time::milliseconds RETX_SUPPRESSION_INITIAL;
   static const time::milliseconds RETX_SUPPRESSION_MAX;

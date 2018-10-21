@@ -79,8 +79,13 @@ BOOST_AUTO_TEST_CASE(BasicForward)
   pitEntry->insertOrUpdateInRecord(*face3, *interest);
 
   face1->setState(face::FaceState::DOWN);
+  face2->setState(face::FaceState::DOWN);
 
   strategy.afterReceiveInterest(*face3, *interest, pitEntry);
+
+  face2->setState(face::FaceState::UP);
+  BOOST_CHECK_EQUAL(strategy.sendNackHistory.size(), 0);
+
   BOOST_CHECK_EQUAL(strategy.rejectPendingInterestHistory.size(), 0);
   BOOST_CHECK_EQUAL(strategy.sendInterestHistory.size(), 1);
 
@@ -198,18 +203,43 @@ BOOST_AUTO_TEST_CASE(TimeOutForward){
   }
 }
 
-BOOST_AUTO_TEST_CASE(RejectLoopback)
+BOOST_AUTO_TEST_CASE(Reconnect)
 {
   fib::Entry& fibEntry = *fib.insert(Name()).first;
   fibEntry.addNextHop(*face1, 0);
+  fibEntry.addNextHop(*face2, 0);
+  fibEntry.addNextHop(*face3, 0);
+
+  face2->close();
+  face3->close();
 
   shared_ptr<Interest> interest = makeInterest("ndn:/H0D6i5fc");
   shared_ptr<pit::Entry> pitEntry = pit.insert(*interest).first;
   pitEntry->insertOrUpdateInRecord(*face1, *interest);
 
   strategy.afterReceiveInterest(*face1, *interest, pitEntry);
-  BOOST_CHECK_EQUAL(strategy.rejectPendingInterestHistory.size(), 1);
+
+  // We don't reject it immediately.
+  BOOST_CHECK_EQUAL(strategy.rejectPendingInterestHistory.size(), 0);
   BOOST_CHECK_EQUAL(strategy.sendInterestHistory.size(), 0);
+
+  // When a new face is up, send it out
+  auto face4 = make_shared<DummyFace>();
+  forwarder.addFace(face4);
+
+  BOOST_CHECK_EQUAL(strategy.rejectPendingInterestHistory.size(), 0);
+  BOOST_CHECK_EQUAL(strategy.sendInterestHistory.size(), 1);
+  {
+    std::set<FaceId> sentInterestFaceIds;
+    std::transform(strategy.sendInterestHistory.begin(), strategy.sendInterestHistory.end(),
+                  std::inserter(sentInterestFaceIds, sentInterestFaceIds.end()),
+                  [] (const MulticastCacheStrategyTester::SendInterestArgs& args) {
+                    return args.outFaceId;
+                  });
+    std::set<FaceId> expectedInterestFaceIds{face4->getId()};
+    BOOST_CHECK_EQUAL_COLLECTIONS(sentInterestFaceIds.begin(), sentInterestFaceIds.end(),
+                                  expectedInterestFaceIds.begin(), expectedInterestFaceIds.end());
+  }
 }
 
 BOOST_AUTO_TEST_SUITE_END() // TestMulticastStrategy

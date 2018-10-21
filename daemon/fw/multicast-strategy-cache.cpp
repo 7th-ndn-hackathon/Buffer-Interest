@@ -66,6 +66,8 @@ void
 MulticastCacheStrategy::afterReceiveInterest(const Face& inFace, const Interest& interest,
                                         const shared_ptr<pit::Entry>& pitEntry)
 {
+  weak_ptr<pit::Entry> weakPitEntry(pitEntry);
+
   const fib::Entry& fibEntry = this->lookupFib(*pitEntry);
   const fib::NextHopList& nexthops = fibEntry.getNextHops();
 
@@ -90,8 +92,8 @@ MulticastCacheStrategy::afterReceiveInterest(const Face& inFace, const Interest&
       continue;
     }
 
+    // When a down-face goes up, resend the interest
     if(outFace.getState() == nfd::face::FaceState::DOWN){
-      weak_ptr<pit::Entry> weakPitEntry(pitEntry);
       outFace.afterStateChange.connectSingleShot(
         [this, weakPitEntry, &outFace](const nfd::face::FaceState& oldState, const nfd::face::FaceState& newState)->void{
           if(newState == nfd::face::FaceState::UP){
@@ -111,7 +113,16 @@ MulticastCacheStrategy::afterReceiveInterest(const Face& inFace, const Interest&
     ++nEligibleNextHops;
   }
 
-  if (nEligibleNextHops == 0 && !isSuppressed) {
+  // When a new face is added, resend the interest
+  // This is expected to work in ONLY ad-hoc scenario.
+  afterAddFace.connectSingleShot(
+    [this, weakPitEntry](Face& newFace)->void{
+      this->onNewFace(weakPitEntry, newFace);
+    }
+  );
+
+  // NACK is not expected as we suspend on the interest for coming faces
+  if (false && nEligibleNextHops == 0 && !isSuppressed) {
     NFD_LOG_DEBUG(interest << " from=" << inFace.getId() << " noNextHop");
 
     lp::NackHeader nackHeader;
@@ -129,11 +140,28 @@ MulticastCacheStrategy::afterReceiveNack(const Face& inFace, const lp::Nack& nac
   this->processNack(inFace, nack, pitEntry);
 }
 
-void MulticastCacheStrategy::onFaceUp(const weak_ptr<pit::Entry>& weakPitEntry, Face& outFace){
+void 
+MulticastCacheStrategy::onFaceUp(const weak_ptr<pit::Entry>& weakPitEntry, Face& outFace){
   if(auto pitEntry = weakPitEntry.lock()){
     const Interest& interest = pitEntry->getInterest();
     this->sendInterest(pitEntry, outFace, interest);
     NFD_LOG_DEBUG(interest << " late send pitEntry-to=" << outFace.getId());
+  }
+}
+
+void 
+MulticastCacheStrategy::onNewFace(const weak_ptr<pit::Entry>& weakPitEntry, Face& outFace){
+  // If the outFace is an multicast-udp-face
+  if(auto pitEntry = weakPitEntry.lock()){
+    const Interest& interest = pitEntry->getInterest();
+    this->sendInterest(pitEntry, outFace, interest);
+    NFD_LOG_DEBUG(interest << " late send pitEntry-to=" << outFace.getId());
+    // Connect a new shot if the interest is still available.
+    afterAddFace.connectSingleShot(
+      [this, weakPitEntry](Face& newFace)->void{
+        this->onNewFace(weakPitEntry, newFace);
+      }
+    );
   }
 }
 
