@@ -57,7 +57,7 @@ private:
   friend ProcessNackTraits<MulticastCacheStrategy>;
   RetxSuppressionExponential m_retxSuppression;
 
-  void onFaceUp(const shared_ptr<pit::Entry>& pitEntry, Face& outFace);
+  void onFaceUp(const weak_ptr<pit::Entry>& weakPitEntry, Face& outFace);
 
 PUBLIC_WITH_TESTS_ELSE_PRIVATE:
   static const time::milliseconds RETX_SUPPRESSION_INITIAL;

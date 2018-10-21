@@ -91,10 +91,11 @@ MulticastCacheStrategy::afterReceiveInterest(const Face& inFace, const Interest&
     }
 
     if(outFace.getState() == nfd::face::FaceState::DOWN){
+      weak_ptr<pit::Entry> weakPitEntry(pitEntry);
       outFace.afterStateChange.connectSingleShot(
-        [this, pitEntry, &outFace](const nfd::face::FaceState& oldState, const nfd::face::FaceState& newState)->void{
+        [this, weakPitEntry, &outFace](const nfd::face::FaceState& oldState, const nfd::face::FaceState& newState)->void{
           if(newState == nfd::face::FaceState::UP){
-            this->onFaceUp(pitEntry, outFace);
+            this->onFaceUp(weakPitEntry, outFace);
           }
         }
       );
@@ -128,11 +129,12 @@ MulticastCacheStrategy::afterReceiveNack(const Face& inFace, const lp::Nack& nac
   this->processNack(inFace, nack, pitEntry);
 }
 
-void MulticastCacheStrategy::onFaceUp(const shared_ptr<pit::Entry>& pitEntry, Face& outFace){
-  // TODO: We need to cancel this event if pitEntry times out.
-  const Interest& interest = pitEntry->getInterest();
-  this->sendInterest(pitEntry, outFace, interest);
-  NFD_LOG_DEBUG(interest << " late send pitEntry-to=" << outFace.getId());
+void MulticastCacheStrategy::onFaceUp(const weak_ptr<pit::Entry>& weakPitEntry, Face& outFace){
+  if(auto pitEntry = weakPitEntry.lock()){
+    const Interest& interest = pitEntry->getInterest();
+    this->sendInterest(pitEntry, outFace, interest);
+    NFD_LOG_DEBUG(interest << " late send pitEntry-to=" << outFace.getId());
+  }
 }
 
 } // namespace fw

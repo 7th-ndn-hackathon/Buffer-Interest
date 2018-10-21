@@ -149,10 +149,53 @@ BOOST_AUTO_TEST_CASE(TimeOutForward){
   fibEntry.addNextHop(*face3, 0);
 
   shared_ptr<Interest> interest = makeInterest("ndn:/H0D6i5fc");
-  shared_ptr<pit::Entry> pitEntry = pit.insert(*interest).first;
-  pitEntry->insertOrUpdateInRecord(*face3, *interest);
+  face1->setState(face::FaceState::DOWN);
 
-  forwarder.onInterestFinalize(pitEntry);
+  weak_ptr<pit::Entry> weakPitEntry(pit.insert(*interest).first);
+  {
+    shared_ptr<pit::Entry> pitEntry = weakPitEntry.lock();
+    BOOST_CHECK_NE(pitEntry, nullptr);
+    pitEntry->insertOrUpdateInRecord(*face3, *interest);
+    strategy.afterReceiveInterest(*face3, *interest, pitEntry);
+  }
+
+  BOOST_CHECK_EQUAL(strategy.rejectPendingInterestHistory.size(), 0);
+  BOOST_CHECK_EQUAL(strategy.sendInterestHistory.size(), 1);
+
+  {
+    std::set<FaceId> sentInterestFaceIds;
+    std::transform(strategy.sendInterestHistory.begin(), strategy.sendInterestHistory.end(),
+                  std::inserter(sentInterestFaceIds, sentInterestFaceIds.end()),
+                  [] (const MulticastCacheStrategyTester::SendInterestArgs& args) {
+                    return args.outFaceId;
+                  });
+    std::set<FaceId> expectedInterestFaceIds{face2->getId()};
+    BOOST_CHECK_EQUAL_COLLECTIONS(sentInterestFaceIds.begin(), sentInterestFaceIds.end(),
+                                  expectedInterestFaceIds.begin(), expectedInterestFaceIds.end());
+  }
+
+  {
+    shared_ptr<pit::Entry> pitEntry = weakPitEntry.lock();
+    BOOST_CHECK_NE(pitEntry, nullptr);
+    forwarder.onInterestFinalize(pitEntry);
+  }
+  BOOST_CHECK_EQUAL(weakPitEntry.expired(), true);
+
+  face1->setState(face::FaceState::UP);
+  BOOST_CHECK_EQUAL(strategy.rejectPendingInterestHistory.size(), 0);
+  BOOST_CHECK_EQUAL(strategy.sendInterestHistory.size(), 1);
+
+  {
+    std::set<FaceId> sentInterestFaceIds;
+    std::transform(strategy.sendInterestHistory.begin(), strategy.sendInterestHistory.end(),
+                  std::inserter(sentInterestFaceIds, sentInterestFaceIds.end()),
+                  [] (const MulticastCacheStrategyTester::SendInterestArgs& args) {
+                    return args.outFaceId;
+                  });
+    std::set<FaceId> expectedInterestFaceIds{face2->getId()};
+    BOOST_CHECK_EQUAL_COLLECTIONS(sentInterestFaceIds.begin(), sentInterestFaceIds.end(),
+                                  expectedInterestFaceIds.begin(), expectedInterestFaceIds.end());
+  }
 }
 
 BOOST_AUTO_TEST_CASE(RejectLoopback)
